@@ -1,8 +1,0 @@
-setup.py
-openconc/__init__.py
-openconc/openconc.py
-openconc.egg-info/PKG-INFO
-openconc.egg-info/SOURCES.txt
-openconc.egg-info/dependency_links.txt
-openconc.egg-info/not-zip-safe
-openconc.egg-info/top_level.txt
