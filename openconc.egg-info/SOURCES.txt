@@ -1,6 +1,11 @@
 setup.py
 openconc/__init__.py
-openconc/openconc.py
+openconc/app.py
+openconc/concordance.py
+openconc/corpora.py
+openconc/files.py
+openconc/misc.py
+openconc/settings.py
 openconc.egg-info/PKG-INFO
 openconc.egg-info/SOURCES.txt
 openconc.egg-info/dependency_links.txt
