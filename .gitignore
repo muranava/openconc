@@ -3,7 +3,7 @@
 
 # Setuptools distribution folder.
 /dist/
-
+/build/
 # Corpus test file
 /testfiles/
 
