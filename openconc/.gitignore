@@ -1,0 +1,12 @@
+# Compiled python modules.
+*.pyc
+*.ini
+# Setuptools distribution folder.
+/dist/
+/build/
+/__pycache__/
+# Default user data folder
+/user_data/
+
+# Python egg metadata, regenerated from source files by setuptools.
+/*.egg-info

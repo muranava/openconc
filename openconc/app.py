@@ -38,6 +38,7 @@ class OpenConc(tk.Frame):
             ts = datetime.now().time().isoformat()
             update_text = "{0} ({1})".format(update_text, ts)
             self.status_var.set(update_text)
+        self.root.update_idletasks()
 
     def book_tab_change(self, event):
         tab_index = self.book.index(self.book.select())

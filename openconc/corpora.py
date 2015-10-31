@@ -88,6 +88,9 @@ class Corpus(tk.Frame):
         parent = self.parent.concordance_frame
         self.button_style = "C{}.TButton".format(self.n)
         self.conc_frame = ttk.Frame(parent)
+        self.conc_frame.rowconfigure(0, weight=1)
+        self.conc_frame.rowconfigure(1, weight=0)
+        self.conc_frame.columnconfigure(0, weight=1)
         parent.book.add(self.conc_frame, text=self.name_var.get())
         # row 1
         self.conc_button_frame = ttk.Frame(self.conc_frame)
@@ -96,19 +99,21 @@ class Corpus(tk.Frame):
         self.conc_results_frame = ttk.Frame(self.conc_frame)
         self.conc_results_frame.grid(row=0, column=0, sticky="news")
         self.conc_results_frame.rowconfigure(0, weight=1)
-        self.conc_results_frame.columnconfigure(1, weight=1)
-        self.conc_results_frame.columnconfigure(3, weight=1)
+        self.conc_results_frame.rowconfigure(1, weight=0)  # x scrollbars
+        self.conc_results_frame.columnconfigure(0, weight=0)  # index
+        self.conc_results_frame.columnconfigure(1, weight=1)  # conc line
+        self.conc_results_frame.columnconfigure(2, weight=0)  # y  scrollbar
+        self.conc_results_frame.columnconfigure(3, weight=0)   # metadata
         self.conc_ybar = ttk.Scrollbar(self.conc_results_frame, command=self.concordance_yview)
         self.conc_ybar.grid(row=0, column=2, sticky="news")
         self.conc_line_xbar = ttk.Scrollbar(self.conc_results_frame, orient="horizontal")
         self.conc_line_xbar.grid(row=1, column=1, sticky="news")
-        self.conc_line_text = tk.Text(self.conc_results_frame, wrap="none", height=30,
-                                      yscrollcommand=self.conc_ybar.set,
-                                      xscrollcommand=self.conc_line_xbar.set, width=100)
+        self.conc_line_text = tk.Text(self.conc_results_frame, wrap="none", yscrollcommand=self.conc_ybar.set,
+                                      xscrollcommand=self.conc_line_xbar.set)
         self.conc_line_text.grid(row=0, column=1, sticky="news")
+        self.conc_line_text.tag_configure('key', foreground='black', font='verdana 10 bold')
         self.conc_line_xbar.config(command=self.conc_line_text.xview)
-        self.conc_index_text = tk.Text(self.conc_results_frame, width=6,
-                                       yscrollcommand=self.conc_ybar.set, height=30)
+        self.conc_index_text = tk.Text(self.conc_results_frame, width=8, yscrollcommand=self.conc_ybar.set)
         self.conc_index_text.grid(row=0, column=0, sticky="nesw")
         self.conc_meta_xbar = ttk.Scrollbar(self.conc_results_frame, orient="horizontal")
         self.conc_meta_xbar.grid(row=1, column=3, sticky="news")
@@ -120,14 +125,17 @@ class Corpus(tk.Frame):
         self.conc_meta_text = {}  # corpus & file name, later more with XML corpora if attributes
         metadata = ["Corpus", "Filename"]
         for i, m in enumerate(metadata):
-            self.conc_meta_text[m] = tk.Text(self.conc_meta_canvas_frame, wrap="none", width=30,
-                                             height=30)
+            self.conc_meta_text[m] = tk.Text(self.conc_meta_canvas_frame, wrap="none")
             self.conc_meta_text[m].grid(row=0, column=i, sticky="news")
         misc.disable_all_in_frame(self.conc_results_frame)
         self.parent.root.update_idletasks()
         x2 = self.conc_meta_canvas_frame.winfo_reqwidth()
         self.conc_meta_canvas.create_window(0, 0, anchor="nw", window=self.conc_meta_canvas_frame)
         self.conc_meta_canvas.config(scrollregion=(0, 0, x2, 0))
+        h = self.conc_meta_canvas_frame.winfo_reqheight()
+        for i, m_text in self.conc_meta_text.items():
+            m_text["height"] = h
+
         # row 1 BUTTONS
         self.conc_button_frame = ttk.Frame(self.conc_frame)
         self.conc_button_frame.columnconfigure(0, weight=0)
@@ -195,7 +203,6 @@ class Corpus(tk.Frame):
         misc.disable_all_in_frame(self.conc_results_frame)
 
     def check_conc_proc_status(self):
-        n = self.name_var.get()
         try:
             if self.conc_job.is_alive():
                 try:
@@ -210,14 +217,17 @@ class Corpus(tk.Frame):
                             self.conc_index_text["state"] = "normal"
                             self.conc_line_text["state"] = "normal"
                             for r in results:
-                                self.add_concordance_line(r, n)
+                                self.add_concordance_line(r)
                                 self.concordance.append(r)
                 except OSError as e:
                     print(e)
                 self.parent.root.update_idletasks()
                 self.after_conc_job = self.parent.root.after(500, self.check_conc_proc_status)
             else:
-                self.parent.root.after_cancel(self.after_conc_job)
+                try:
+                    self.parent.root.after_cancel(self.after_conc_job)
+                except AttributeError:
+                    pass  # if it hasn't been called yet, no problem
                 self.conc_start_button["text"] = "Search this corpus"
                 self.parent.concordance_frame.start_button["state"] = "normal"
                 self.conc_job.terminate()
@@ -229,20 +239,20 @@ class Corpus(tk.Frame):
         except AttributeError as e:
             print(e)
 
-    def add_metadata(self, l, n):
+    def add_metadata(self, l):
         for key, m_text in self.conc_meta_text.items():
-            l["Corpus"] = n
             m_text.insert("end", "{}\n".format(l[key]))
 
-    def add_concordance_line(self, l, n, i=0):
+    def add_concordance_line(self, l, i=0):
         l['Left'] = l['Left'].rjust(self.conc_options['ContextLeft'])
         l['Right'] = l['Right'].ljust(self.conc_options['ContextRight'])
-        conc_line = "{0}\t\t{1}\t\t{2}\n".format(l['Left'],
-                                                 l['Key'],
-                                                 l['Right'])
-        self.add_metadata(l, n)
+        conc_line = "{0}    {1}    {2}\n".format(l['Left'], l['Key'], l['Right'])
+        self.add_metadata(l)
         self.conc_line_text.insert("end", conc_line)
         i = int(self.conc_line_text.index('end-1c').split('.')[0])-1  # last line of text
+        line_key_start = "{}.{}".format(i, len(l['Left'])+4)
+        line_key_end = "{}.{}".format(i, len(l['Left']) + 4 + len(l['Key']))
+        self.conc_line_text.tag_add("key", line_key_start, line_key_end)
         self.conc_index_text.insert("end", "{}\n".format(i))
 
     def improve_concordance_display(self):
@@ -265,9 +275,8 @@ class Corpus(tk.Frame):
                 m["state"] = "normal"
             self.conc_index_text["state"] = "normal"
             self.conc_line_text["state"] = "normal"
-            n = self.name_var.get()  # so that name updates when changed after search
             for i, l in enumerate(self.concordance):
-                self.add_concordance_line(l, n, i)
+                self.add_concordance_line(l, i)
             self.parent.root.update_idletasks()
             for i, m in self.conc_meta_text.items():
                 m["state"] = "disabled"

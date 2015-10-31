@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+from tkinter import filedialog
 from configparser import SafeConfigParser
 from openconc import misc
 import os
@@ -133,11 +134,15 @@ class SettingsFrame(tk.Frame):
         misc.pad_children(self.xml_frame, 5, 5)
         misc.pad_children(self.concordance_frame, 5, 5)
 
-    def browse_input():
-        pass
+    def browse_input(self):
+        in_dir = filedialog.askdirectory()
+        if in_dir:
+            self.file["InputDir"].set(in_dir)
 
-    def browse_output():
-        pass
+    def browse_output(self):
+        out_dir = filedialog.askdirectory()
+        if out_dir:
+            self.file["OutputDir"].set(out_dir)
 
     def write_default_config(self):
         self.config.add_section("File")

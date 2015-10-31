@@ -44,12 +44,12 @@ def worker_search_in_file(args):
     conc = []
     if bool(o['IgnorePOS']) == True:
         pos_delim = o['POSDelim']
-        pos_tag = "[A-Z]{2,}[A-Z$0-9+*]*?"
+        pos_tag = "[A-Z\.,-]{2,}[A-Z$0-9+*]*?"
         tag_str = "{0}{1}".format(pos_delim, pos_tag)
-        f_text = re.sub(r"{0}\s".format(tag_str), r"", f_text)
+        f_text = re.sub(r"{0}\s".format(tag_str), r" ", f_text)
     if bool(o['IgnoreXML']) == True:
         f_text = re.sub(r"<[^>]+>", r"", f_text)
-        f_text = re.sub(r"&lt;[^&]+&gt;", r"", f_text)
+        f_text = re.sub(r"&lt;[^&]+&gt;", r" ", f_text)
     handler.close()
     matches = re.finditer(o['RegExPattern'], f_text)
     if matches:
@@ -73,11 +73,11 @@ def worker_search_in_file(args):
                 r_char = int(o['ContextRight']) * 30
                 c['Right'] = misc.tokenize_str(f_text[e:e + r_char],
                                                o['WordRegex'])
-                c['Left'] = misc.tokenize_str(f_text[s - l_char:s],
-                                               o['WordRegex'])
+                c['Left'] = misc.tokenize_str(f_text[s - l_char:s], o['WordRegex'])
                 c['Left'] = " ".join(c['Left'][-int(o['ContextRight']):])
                 c['Right'] = " ".join(c['Right'][0:int(o['ContextRight'])])
 
+            c['Corpus'] = o['Corpus']
             c['Filename'] = os.path.basename(f)
             c['N'] = n  # number of match within file, used for sorting after filename
             conc.append(c)
@@ -102,23 +102,26 @@ class ConcordanceFrame(tk.Frame):
 
     def draw_ui(self):
         settings = self.parent.settings_frame  # just for shorter refs
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
         self.book = ttk.Notebook(self)
         self.book.grid(column=0, row=0, sticky="news")
         self.rowconfigure(0, weight=1)  # conc tabs
-        self.rowconfigure(1, weight=1)  # search frame
+        self.rowconfigure(1, weight=0)  # search frame
         # SEARCH frame
         self.search_frame = ttk.Frame(self)
         self.search_frame.grid(row=1, column=0, sticky="news")
-        self.search_frame.rowconfigure(0, weight=1)
-        self.search_frame.rowconfigure(1, weight=1)
+        self.search_frame.rowconfigure(0, weight=0)
+        self.search_frame.rowconfigure(1, weight=0)
+        self.search_frame.columnconfigure(0, weight=0)
         self.search_frame.columnconfigure(8, weight=1)
         # row 0
         tk.Label(self.search_frame, text="Search text", font="verdana 12").grid(column=0, row=0,
                                                                                 sticky="nw")
         self.search_var = tk.StringVar()
         self.search_combo = ttk.Combobox(self.search_frame, textvariable=self.search_var,
-                                         style="Search.TCombobox")
-        self.search_combo.grid(row=0, column=1, sticky="news", columnspan=10)
+                                         style="Search.TCombobox", font="verdana 12")
+        self.search_combo.grid(row=0, column=1, sticky="new", columnspan=8)
         # row 1
         tk.Label(self.search_frame, text="Context left", font="verdana 10").grid(column=0, row=1,
                                                                                  sticky="nw")
@@ -130,14 +133,14 @@ class ConcordanceFrame(tk.Frame):
                                     textvariable=settings.concordance['ContextLeft'])
         self.right_entry = ttk.Entry(self.search_frame, width=5,
                                      textvariable=settings.concordance['ContextRight'])
-        self.left_entry.grid(row=1, column=1, sticky="news")
-        self.right_entry.grid(row=1, column=3, sticky="news")
+        self.left_entry.grid(row=1, column=1, sticky="new")
+        self.right_entry.grid(row=1, column=3, sticky="new")
         self.unit_combo = ttk.Combobox(self.search_frame,
                                        textvariable=settings.concordance[
                                            'ContextUnit'],
                                        values=["Characters", "Words"], state="readonly")
         self.unit_combo["width"] = 8
-        self.unit_combo.grid(row=1, column=5, sticky="news")
+        self.unit_combo.grid(row=1, column=5, sticky="new")
 
         self.case_check = ttk.Checkbutton(
             self.search_frame, text="Case sensitive", variable=settings.concordance['Case'])
@@ -149,21 +152,30 @@ class ConcordanceFrame(tk.Frame):
 
         # ALL tab
         self.all_frame = ttk.Frame(self)
+        self.all_frame.rowconfigure(0, weight=1)
+        self.all_frame.rowconfigure(1, weight=0)
+        self.all_frame.columnconfigure(0, weight=1)  # !!!
         self.book.add(self.all_frame, text="All corpora")
         # row 0 RESULTS
         self.results_frame = ttk.Frame(self.all_frame)
+        self.results_frame.rowconfigure(0, weight=1)
+        self.results_frame.rowconfigure(1, weight=0)  # x scrollbars
+        self.results_frame.columnconfigure(0, weight=0)  # index
+        self.results_frame.columnconfigure(1, weight=1)  # conc line
+        self.results_frame.columnconfigure(2, weight=0)  # y  scrollbar
+        self.results_frame.columnconfigure(3, weight=0)   # metadata
         self.results_frame.grid(row=0, column=0, sticky="news")
         self.ybar = ttk.Scrollbar(self.results_frame, command=self.yview)
         self.ybar.grid(row=0, column=2, sticky="news")
         self.line_xbar = ttk.Scrollbar(self.results_frame, orient="horizontal")
         self.line_xbar.grid(row=1, column=1, sticky="news")
-        self.line_text = tk.Text(self.results_frame, wrap="none", height=30,
+        self.line_text = tk.Text(self.results_frame, wrap="none",
                                  yscrollcommand=self.ybar.set,
-                                 xscrollcommand=self.line_xbar.set, width=100)
+                                 xscrollcommand=self.line_xbar.set)
         self.line_text.grid(row=0, column=1, sticky="news")
+        self.line_text.tag_configure('key', foreground='black', font='verdana 10 bold')
         self.line_xbar.config(command=self.line_text.xview)
-        self.index_text = tk.Text(self.results_frame, width=8, yscrollcommand=self.ybar.set,
-                                  height=30)
+        self.index_text = tk.Text(self.results_frame, width=8, yscrollcommand=self.ybar.set)
         self.index_text.grid(row=0, column=0, sticky="news")
 
         self.meta_xbar = ttk.Scrollbar(self.results_frame, orient="horizontal")
@@ -177,13 +189,18 @@ class ConcordanceFrame(tk.Frame):
         # if attributes provided
         self.meta_text = {}
         metadata = ["Corpus", "Filename"]
+        self.parent.root.update_idletasks()
         for i, m in enumerate(metadata):
-            self.meta_text[m] = tk.Text(self.meta_canvas_frame, wrap="none", width=30, height=30)
+            self.meta_text[m] = tk.Text(self.meta_canvas_frame, wrap="none")
             self.meta_text[m].grid(row=0, column=i, sticky="news")
         self.parent.root.update_idletasks()
         x2 = self.meta_canvas_frame.winfo_reqwidth()
         self.meta_canvas.create_window(0, 0, anchor="nw", window=self.meta_canvas_frame)
         self.meta_canvas.config(scrollregion=(0, 0, x2, 0))
+        h = self.meta_canvas_frame.winfo_reqheight()
+        for i, m_text in self.meta_text.items():
+            m_text["height"] = h
+
         # row 1 BUTTONS
         self.button_frame = ttk.Frame(self.all_frame)
         self.button_frame.columnconfigure(0, weight=0)
@@ -253,12 +270,14 @@ class ConcordanceFrame(tk.Frame):
             self.parent.concordance_frame.search_combo["values"] = search_terms
 
     def check_proc_statuses(self):
+        i = int(self.line_text.index('end-1c').split('.')[0])-1
+        if i > 0:
+            self.parent.set_status("Creating concordance... (more than {} results so far)".format(i))
         try:
             alive = 0
             for i, job in enumerate(self.jobs):
                 if job.is_alive():
                     alive += 1
-                    n = self.parent.corpus[i].name_var.get()
                     try:
                         if self.pipes[i].poll():
                             try:
@@ -267,8 +286,9 @@ class ConcordanceFrame(tk.Frame):
                                 print(e)
                             else:
                                 for r in results:
-                                    self.add_concordance_line(r, n)
-                                    self.parent.corpus[i].add_concordance_line(r, n)
+                                    self.add_concordance_line(r)
+                                    self.parent.corpus[i].add_concordance_line(r)
+
                     except OSError as e:
                         print(e)
                 else:
@@ -279,7 +299,10 @@ class ConcordanceFrame(tk.Frame):
                 else:
                     self.clear_concordance_view()
                     self.concordance = []
-                self.parent.root.after_cancel(self.after_job)
+                try:
+                    self.parent.root.after_cancel(self.after_job)
+                except AttributeError:
+                    pass  # if it hasn't been called yet, no problem
                 self.start_button["text"] = "Search all corpora"
                 for j in self.jobs:
                     j.terminate()
@@ -288,19 +311,29 @@ class ConcordanceFrame(tk.Frame):
                 self.after_job = self.parent.root.after(1000, self.check_proc_statuses)
 
         except Exception as e:
+            raise(e)
             print("checking...", e)
 
     def improve_concordance_display(self):
         """ resize frames depending on content """
         i = int(self.line_text.index('end-1c').split('.')[0])-1
         self.index_text.configure(width=len(str(i)))
+        longest_filename = 0
+        longest_corpus = 0
+        for l in self.concordance:
+            if len(l['Filename']) > longest_filename:
+                longest_filename = len(l['Filename'])
+            if len(l['Corpus']) > longest_corpus:
+                longest_corpus = len(l['Corpus'])
+        self.meta_text['Filename'].configure(width=longest_filename)
+        self.meta_text['Corpus'].configure(width=longest_corpus)
         self.parent.root.update_idletasks()
 
     def display_concordance(self):
         if self.concordance is not None:
             misc.enable_all_in_frame(self.results_frame)
             for i, l in enumerate(self.concordance):
-                self.add_concordance_line(l, None, i)
+                self.add_concordance_line(l, i)
             self.parent.root.update_idletasks()
             self.improve_concordance_display()
             misc.disable_all_in_frame(self.results_frame)
@@ -308,33 +341,37 @@ class ConcordanceFrame(tk.Frame):
     def finish_search(self):
         self.concordance = []
         for corpus in self.parent.corpus:
-            for l in corpus.conc_return_shared:
-                l["Corpus"] = corpus.name_var.get()
-                self.concordance.append(l)
+            corpus_tag = "C{}".format(corpus.name_var.get().replace(" ", ""))
+            self.meta_text["Corpus"].tag_configure(corpus_tag, background=corpus.color)
+            self.concordance += corpus.conc_return_shared
             corpus.finish_conc_search()
-        self.concordance = sorted(self.concordance,
-                                  key=operator.itemgetter('Corpus', 'Filename', 'N'))
+        self.concordance = sorted(self.concordance, key=operator.itemgetter('Corpus', 'Filename', 'N'))
         self.clear_concordance_view()
         self.display_concordance()
         self.export_button["state"] = "normal"
         self.parent.set_status("Found {} results in all corpora.".format(len(self.concordance)))
 
-    def add_metadata(self, l, n):
+    def add_metadata(self, l):
         for key, m_text in self.meta_text.items():
-            if n is not None:
-                l['Corpus'] = n
             m_text.insert("end", "{}\n".format(l[key]))
 
-    def add_concordance_line(self, l, n, i=0):
+    def add_concordance_line(self, l, i=0):
         l['Left'] = l['Left'].rjust(self.options['ContextLeft'])
         l['Right'] = l['Right'].ljust(self.options['ContextRight'])
-        conc_line = "{0}\t\t{1}\t\t{2}\n".format(l['Left'],
-                                                 l['Key'],
-                                                 l['Right'])
+        conc_line = "{0}    {1}    {2}\n".format(l['Left'], l['Key'], l['Right'])
         self.line_text.insert("end", conc_line)
+        self.add_metadata(l)
         i = int(self.line_text.index('end-1c').split('.')[0])-1  # last line of text
+        line_key_start = "{}.{}".format(i, len(l['Left'])+4)
+        line_key_end = "{}.{}".format(i, len(l['Left']) + 4 + len(l['Key']))
+        self.line_text.tag_add("key", line_key_start, line_key_end)
         self.index_text.insert("end", "{}\n".format(i))
-        self.add_metadata(l, n)
+        corpus_tag = "C{}".format(l['Corpus'].replace(" ", ""))
+        corpus_start = "{}.0".format(i)
+        corpus_end = "{}.{}".format(i, len(l['Corpus']))
+        self.meta_text["Corpus"].tag_add(corpus_tag, corpus_start, corpus_end)
+
+
 
     def create_concordance(self):
         self.clear_concordance_view()
@@ -359,19 +396,20 @@ class ConcordanceFrame(tk.Frame):
             self.shared = []
             misc.enable_all_in_frame(self.results_frame)
             for corpus in self.parent.corpus:
+                corpus_tag = "C{}".format(corpus.name_var.get().replace(" ", ""))
+                self.meta_text["Corpus"].tag_configure(corpus_tag, background=corpus.color)
                 misc.enable_all_in_frame(corpus.conc_results_frame)
+                options["Corpus"] = corpus.name_var.get()
                 corpus.conc_options = options
                 manager = mp.Manager()
                 corpus.conc_return_shared = manager.list()
                 pipe, worker_pipe = mp.Pipe()
                 job = mp.Process(target=worker_search_files,
-                                 args=(corpus.files, corpus.conc_options,
+                                 args=(corpus.files, options,
                                        corpus.conc_return_shared, worker_pipe,))
                 self.jobs.append(job)
                 self.pipes.append(pipe)
-                #  so that job, pipe and corpus frame can be accessed with same index
-            for j in self.jobs:
-                j.start()
+                job.start()
             self.parent.root.update_idletasks()
             self.parent.root.after(500, self.check_proc_statuses)
         elif self.start_button["text"] == "Abort":
