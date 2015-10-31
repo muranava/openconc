@@ -14,7 +14,6 @@ class OpenConc(tk.Frame):
     def __init__(self, root):
         tk.Frame.__init__(self)
         self.root = root
-        self.MAX_CORPORA = 10
         # init vars
         self.base_dir = os.path.dirname(os.path.realpath(__file__))
         self.user_dir = os.path.join(self.base_dir, "user_data")
@@ -34,11 +33,11 @@ class OpenConc(tk.Frame):
 
     def set_status(self, update_text, add_timestamp=False):
         if not add_timestamp:
-            self.status_bar_text.set(update_text)
+            self.status_var.set(update_text)
         else:
             ts = datetime.now().time().isoformat()
             update_text = "{0} ({1})".format(update_text, ts)
-            self.status_bar_text.set(update_text)
+            self.status_var.set(update_text)
 
     def book_tab_change(self, event):
         tab_index = self.book.index(self.book.select())
@@ -111,5 +110,3 @@ class OpenConc(tk.Frame):
             h = self.root.winfo_screenheight() - 60
             geom_string = "%dx%d+0+0" % (w, h)
             toplevel.wm_geometry(geom_string)
-
-

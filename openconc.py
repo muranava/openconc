@@ -2,7 +2,6 @@
 import tkinter as tk
 from openconc import app
 
-
 def main():
     root = tk.Tk()
     app.OpenConc(root)

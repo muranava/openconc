@@ -22,7 +22,7 @@ def make_dir(dir_path):
             return False
 
 
-def get_tk_vars(self, variables):
+def get_tk_vars(variables):
     """
     using the .get() of tk.IntVar() & tk.StringVar
     """
@@ -30,10 +30,24 @@ def get_tk_vars(self, variables):
     for v in variables:
         try:
             rv[v] = variables[v].get()
+
         except AttributeError:
             pass
     return rv
 
+def disable_all_in_frame(frame):
+   for child in frame.winfo_children():
+        try:
+            child["state"] = "disabled"
+        except tk.TclError:
+            pass
+
+def enable_all_in_frame(frame):
+   for child in frame.winfo_children():
+        try:
+            child["state"] = "normal"
+        except tk.TclError:
+            pass
 
 def pad_children(parent, x=5, y=5):
     for child in parent.winfo_children():

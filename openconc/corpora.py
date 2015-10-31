@@ -4,8 +4,9 @@ from tkinter import filedialog
 from tkinter import colorchooser
 import multiprocessing as mp
 import os
+import operator
 from openconc import misc
-from openconc.concordance import worker_search_files, conc_worker
+from openconc.concordance import worker_search_files
 
 
 class Corpus(tk.Frame):
@@ -88,15 +89,15 @@ class Corpus(tk.Frame):
         self.button_style = "C{}.TButton".format(self.n)
         self.conc_frame = ttk.Frame(parent)
         parent.book.add(self.conc_frame, text=self.name_var.get())
-        # row 0
-        self.conc_results_frame = ttk.Frame(self.conc_frame)
-        self.conc_results_frame.grid(row=0, column=0, sticky="news")
         # row 1
         self.conc_button_frame = ttk.Frame(self.conc_frame)
         self.conc_button_frame.grid(row=1, column=0, sticky="news")
-
+        # row 0
         self.conc_results_frame = ttk.Frame(self.conc_frame)
         self.conc_results_frame.grid(row=0, column=0, sticky="news")
+        self.conc_results_frame.rowconfigure(0, weight=1)
+        self.conc_results_frame.columnconfigure(1, weight=1)
+        self.conc_results_frame.columnconfigure(3, weight=1)
         self.conc_ybar = ttk.Scrollbar(self.conc_results_frame, command=self.concordance_yview)
         self.conc_ybar.grid(row=0, column=2, sticky="news")
         self.conc_line_xbar = ttk.Scrollbar(self.conc_results_frame, orient="horizontal")
@@ -104,7 +105,7 @@ class Corpus(tk.Frame):
         self.conc_line_text = tk.Text(self.conc_results_frame, wrap="none", height=30,
                                       yscrollcommand=self.conc_ybar.set,
                                       xscrollcommand=self.conc_line_xbar.set, width=100)
-        self.conc_line_text.grid(row=0, column=1, sticky="nesw")
+        self.conc_line_text.grid(row=0, column=1, sticky="news")
         self.conc_line_xbar.config(command=self.conc_line_text.xview)
         self.conc_index_text = tk.Text(self.conc_results_frame, width=6,
                                        yscrollcommand=self.conc_ybar.set, height=30)
@@ -117,10 +118,12 @@ class Corpus(tk.Frame):
         self.conc_meta_xbar.config(command=self.conc_meta_canvas.xview)
         self.conc_meta_canvas_frame = tk.Frame(self.conc_meta_canvas)
         self.conc_meta_text = {}  # corpus & file name, later more with XML corpora if attributes
-        self.conc_meta_text["corpus"] = tk.Text(self.conc_meta_canvas_frame, wrap="none", width=20,
-                                                height=30)
-        self.conc_meta_text["file"] = tk.Text(self.conc_meta_canvas_frame, wrap="none", width=20,
-                                              height=30)
+        metadata = ["Corpus", "Filename"]
+        for i, m in enumerate(metadata):
+            self.conc_meta_text[m] = tk.Text(self.conc_meta_canvas_frame, wrap="none", width=30,
+                                             height=30)
+            self.conc_meta_text[m].grid(row=0, column=i, sticky="news")
+        misc.disable_all_in_frame(self.conc_results_frame)
         self.parent.root.update_idletasks()
         x2 = self.conc_meta_canvas_frame.winfo_reqwidth()
         self.conc_meta_canvas.create_window(0, 0, anchor="nw", window=self.conc_meta_canvas_frame)
@@ -131,7 +134,7 @@ class Corpus(tk.Frame):
         self.conc_button_frame.columnconfigure(1, weight=0)
         self.conc_button_frame.columnconfigure(5, weight=1)
         self.conc_button_frame.grid(row=1, column=0, sticky="news")
-        self.conc_start_button = ttk.Button(self.conc_button_frame, text="Search all corpora",
+        self.conc_start_button = ttk.Button(self.conc_button_frame, text="Search this corpus",
                                             command=self.create_concordance,
                                             style=self.button_style)
         self.conc_start_button.grid(row=1, column=0, sticky="news", columnspan=3)
@@ -162,7 +165,7 @@ class Corpus(tk.Frame):
                                            textvariable=self.conc_filter_var,
                                            style="Small.TEntry", state="disabled")
         self.conc_filter_entry.grid(row=0, column=5, sticky="news")
-        self.conc_filter_button = ttk.Button(self.conc_button_frame, text="Filter results",
+        self.conc_filter_button = ttk.Button(self.conc_button_frame, text="Filter concordance results",
                                              command=self.filter_concordance,
                                              style="Small.TButton", state="disabled")
         self.conc_filter_button.grid(row=1, column=4, columnspan=2, sticky="news")
@@ -183,51 +186,135 @@ class Corpus(tk.Frame):
     def export_concordance(self):
         pass
 
-    def clear_concordance(self):
-        self.concordance = []
+    def clear_concordance_view(self):
+        misc.enable_all_in_frame(self.conc_results_frame)
         self.conc_line_text.delete("0.0", "end")
         self.conc_index_text.delete("0.0", "end")
         for key, m_text in self.conc_meta_text.items():
             m_text.delete("0.0", "end")
+        misc.disable_all_in_frame(self.conc_results_frame)
+
+    def check_conc_proc_status(self):
+        n = self.name_var.get()
+        try:
+            if self.conc_job.is_alive():
+                try:
+                    if self.conc_pipe.poll():
+                        try:
+                            results = self.conc_pipe.recv()
+                        except OSError as e:
+                            print(e)
+                        else:
+                            for i, m in self.conc_meta_text.items():
+                                m["state"] = "normal"
+                            self.conc_index_text["state"] = "normal"
+                            self.conc_line_text["state"] = "normal"
+                            for r in results:
+                                self.add_concordance_line(r, n)
+                                self.concordance.append(r)
+                except OSError as e:
+                    print(e)
+                self.parent.root.update_idletasks()
+                self.after_conc_job = self.parent.root.after(500, self.check_conc_proc_status)
+            else:
+                self.parent.root.after_cancel(self.after_conc_job)
+                self.conc_start_button["text"] = "Search this corpus"
+                self.parent.concordance_frame.start_button["state"] = "normal"
+                self.conc_job.terminate()
+                if self.conc_cancelled:
+                    self.clear_concordance_view()
+                    self.concordance = []
+                else:
+                    self.finish_conc_search()
+        except AttributeError as e:
+            print(e)
+
+    def add_metadata(self, l, n):
+        for key, m_text in self.conc_meta_text.items():
+            l["Corpus"] = n
+            m_text.insert("end", "{}\n".format(l[key]))
+
+    def add_concordance_line(self, l, n, i=0):
+        l['Left'] = l['Left'].rjust(self.conc_options['ContextLeft'])
+        l['Right'] = l['Right'].ljust(self.conc_options['ContextRight'])
+        conc_line = "{0}\t\t{1}\t\t{2}\n".format(l['Left'],
+                                                 l['Key'],
+                                                 l['Right'])
+        self.add_metadata(l, n)
+        self.conc_line_text.insert("end", conc_line)
+        i = int(self.conc_line_text.index('end-1c').split('.')[0])-1  # last line of text
+        self.conc_index_text.insert("end", "{}\n".format(i))
+
+    def improve_concordance_display(self):
+        """ resize frames depending on content """
+        longest_filename = 0
+        for f in self.files:
+            fn = os.path.basename(f)
+            if len(fn) > longest_filename:
+                longest_filename = len(fn)
+        self.conc_meta_text['Filename'].configure(width=longest_filename)
+        self.conc_meta_text['Corpus'].configure(width=len(self.concordance[0]["Corpus"]))
+        i = int(self.conc_line_text.index('end-1c').split('.')[0])-1
+        self.conc_index_text.configure(width=len(str(i)))
+        self.parent.root.update_idletasks()
+
+    def display_concordance(self):
+        self.clear_concordance_view()
+        if self.concordance is not None:
+            for i, m in self.conc_meta_text.items():
+                m["state"] = "normal"
+            self.conc_index_text["state"] = "normal"
+            self.conc_line_text["state"] = "normal"
+            n = self.name_var.get()  # so that name updates when changed after search
+            for i, l in enumerate(self.concordance):
+                self.add_concordance_line(l, n, i)
+            self.parent.root.update_idletasks()
+            for i, m in self.conc_meta_text.items():
+                m["state"] = "disabled"
+            self.conc_index_text["state"] = "disabled"
+            self.conc_line_text["state"] = "disabled"
+            self.improve_concordance_display()
+
+    def finish_conc_search(self):
+        self.concordance = sorted(self.conc_return_shared,
+                                  key=operator.itemgetter('Filename', 'N'))
+        self.parent.set_status("Found {} results in '{}'.".format(len(self.concordance),
+                                                                  self.name_var.get()))
+        self.display_concordance()
+        self.conc_export_button["state"] = "normal"
+        misc.disable_all_in_frame(self.conc_results_frame)
 
     def create_concordance(self):
-        self.clear_concordance()
+        self.clear_concordance_view()
+        self.concordance = []
         self.conc_export_button["state"] = "disabled"
-        self.num_files = len(self.files)
-        options = {}
-        options['Regex'] = self.regex
-        options['ContextLeft'] = self.context_left.get()
-        options['ContextRight'] = self.context_right.get()
-        manager = mp.Manager()
-        self.pipe, worker_pipe = mp.Pipe()
-        self.return_shared = manager.list()
-        self.search_job = mp.Process(target=worker_search_files,
-                                     args=(self.files, options, self.return_shared, worker_pipe,))
-        if self.conc_start_button["text"] == "Search corpus":
-            self.set_status("Creating concordance ...")
-            self.c_a_start_btn.configure(text="Abort")
-            options = misc.get_tk_vars(self.conf['Conc'])
-            options.update(dict(self.config.items('General')))
-            options.update(self.get_tk_vars(self.conf['XML']))
-            options["SearchTerm"] = str(self.c_a_search_term_combo.get())
-            search_terms = list(self.c_a_search_term_combo["values"])
-            if options["SearchTerm"] not in search_terms:
-                search_terms.insert(0, options["SearchTerm"])
-                self.c_a_search_term_combo["values"] = search_terms
-            corpora = []
-            for c in self.corpus:
-                corpora.append(c)  # == corpora = self.corpus ?
-            self.c_worker_proc = mp.Process(target=conc_worker,
-                                            args=(corpora, options,
-                                                  self.shared,))
-            self.c_worker_proc.start()
-            self.root.update()
-            self.root.after(500, self.check_conc_proc_status)
+        if self.conc_start_button["text"] == "Search this corpus":
+            self.conc_cancelled = False
+            self.parent.set_status("Creating concordance ...")
+            self.conc_start_button["text"] = "Abort"
+            self.parent.concordance_frame.start_button["state"] = "disabled"
+            self.conc_index_text["width"] = 6
+            options = misc.get_tk_vars(self.parent.settings_frame.definition)
+            options.update(misc.get_tk_vars(self.parent.settings_frame.file))
+            options.update(misc.get_tk_vars(self.parent.settings_frame.concordance))
+            options.update(misc.get_tk_vars(self.parent.settings_frame.xml))
+            options["SearchTerm"] = self.parent.concordance_frame.search_var.get()
+            self.conc_options = options
+            self.parent.concordance_frame.add_search_term(options["SearchTerm"])
+            manager = mp.Manager()
+            self.conc_return_shared = manager.list()
+            self.conc_pipe, worker_pipe = mp.Pipe()
+            self.conc_job = mp.Process(target=worker_search_files,
+                                       args=(self.files, options, self.conc_return_shared, worker_pipe,))
+            self.conc_job.start()
+            self.parent.root.update_idletasks()
+            self.parent.root.after(500, self.check_conc_proc_status)
         elif self.conc_start_button["text"] == "Abort":
-            self.set_status("Concordance creation was aborted.", True)
+            self.search_cancelled = True
+            self.parent.set_status("Concordance creation was aborted.", True)
             self.conc_start_button.configure(text="Search", state="normal")
-            self.parent.root.update()
-            self.c_worker_proc.terminate()
+            self.parent.root.update_idletasks()
+            self.conc_job.terminate()
 
     def undraw_all(self):
         self.setup_frame.grid_forget()
@@ -264,7 +351,7 @@ class Corpus(tk.Frame):
     def add_files(self):
         options = {}
         config = self.parent.settings_frame.config
-        options['defaultextension'] = config["General"]["DefaultExtension"]
+        options['defaultextension'] = config["File"]["Extension"]
         if options['defaultextension'] == ".txt":
             options['filetypes'] = [('Text files', '.txt'), ('XML files', '.xml'),
                                     ('HTML files', '.html')]
@@ -275,7 +362,7 @@ class Corpus(tk.Frame):
             options['filetypes'] = [('HTML files', '.html'),
                                     ('Text files', '.txt'),
                                     ('XML files', '.xml')]
-        default_dir = config["General"]["DefaultInputDir"].strip()
+        default_dir = config["File"]["InputDir"].strip()
         if os.path.exists(default_dir):
             options['initialdir'] = default_dir
         else:
@@ -287,7 +374,3 @@ class Corpus(tk.Frame):
         for f in self.parent.root.splitlist(files_str):
             self.files.append(f)
             self.listbox.insert("end", os.path.basename(f))
-
-if __name__ == "__main__":
-    openconc.main()
- 
