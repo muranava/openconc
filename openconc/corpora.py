@@ -4,6 +4,7 @@ from tkinter import filedialog
 from tkinter import colorchooser
 import multiprocessing as mp
 import os
+import re
 import operator
 from openconc import misc
 from openconc.concordance import worker_search_files
@@ -109,11 +110,12 @@ class Corpus(tk.Frame):
         self.conc_line_xbar = ttk.Scrollbar(self.conc_results_frame, orient="horizontal")
         self.conc_line_xbar.grid(row=1, column=1, sticky="news")
         self.conc_line_text = tk.Text(self.conc_results_frame, wrap="none", yscrollcommand=self.conc_ybar.set,
-                                      xscrollcommand=self.conc_line_xbar.set)
+                                      xscrollcommand=self.conc_line_xbar.set, font='courier 10')
         self.conc_line_text.grid(row=0, column=1, sticky="news")
-        self.conc_line_text.tag_configure('key', foreground='black', font='verdana 10 bold')
+        self.conc_line_text.tag_configure('key', foreground='black', font='courier 10 bold')
         self.conc_line_xbar.config(command=self.conc_line_text.xview)
-        self.conc_index_text = tk.Text(self.conc_results_frame, width=8, yscrollcommand=self.conc_ybar.set)
+        self.conc_index_text = tk.Text(self.conc_results_frame, width=8, yscrollcommand=self.conc_ybar.set,
+                                       font='courier 10', wrap="none")
         self.conc_index_text.grid(row=0, column=0, sticky="nesw")
         self.conc_meta_xbar = ttk.Scrollbar(self.conc_results_frame, orient="horizontal")
         self.conc_meta_xbar.grid(row=1, column=3, sticky="news")
@@ -125,7 +127,7 @@ class Corpus(tk.Frame):
         self.conc_meta_text = {}  # corpus & file name, later more with XML corpora if attributes
         metadata = ["Corpus", "Filename"]
         for i, m in enumerate(metadata):
-            self.conc_meta_text[m] = tk.Text(self.conc_meta_canvas_frame, wrap="none")
+            self.conc_meta_text[m] = tk.Text(self.conc_meta_canvas_frame, wrap="none", font='courier 10')
             self.conc_meta_text[m].grid(row=0, column=i, sticky="news")
         misc.disable_all_in_frame(self.conc_results_frame)
         self.parent.root.update_idletasks()
@@ -135,6 +137,7 @@ class Corpus(tk.Frame):
         h = self.conc_meta_canvas_frame.winfo_reqheight()
         for i, m_text in self.conc_meta_text.items():
             m_text["height"] = h
+            m_text["width"] = 20
 
         # row 1 BUTTONS
         self.conc_button_frame = ttk.Frame(self.conc_frame)
@@ -172,11 +175,20 @@ class Corpus(tk.Frame):
         self.conc_filter_entry = ttk.Entry(self.conc_button_frame,
                                            textvariable=self.conc_filter_var,
                                            style="Small.TEntry", state="disabled")
-        self.conc_filter_entry.grid(row=0, column=5, sticky="news")
-        self.conc_filter_button = ttk.Button(self.conc_button_frame, text="Filter concordance results",
+        self.conc_filter_entry.grid(row=0, column=5, sticky="news", columnspan=3)
+        self.conc_filter_button = ttk.Button(self.conc_button_frame, text="Filter",
                                              command=self.filter_concordance,
                                              style="Small.TButton", state="disabled")
         self.conc_filter_button.grid(row=1, column=4, columnspan=2, sticky="news")
+        self.conc_filter_what_var = tk.StringVar()
+        self.conc_filter_what_combo = ttk.Combobox(self.conc_button_frame, textvariable=self.conc_filter_what_var,
+                                                   values=['Key', "Left", "Right", "Line"], state="readonly")
+        self.conc_filter_what_var.set('Key')
+        self.conc_filter_what_combo.grid(row=1, column=6, sticky="news")
+        self.conc_unfilter_button = ttk.Button(self.conc_button_frame, text="Undo filter",
+                                               command=self.unfilter_concordance,
+                                               style="Small.TButton", state="disabled")
+        self.conc_unfilter_button.grid(row=1, column=7, sticky="news")
         misc.pad_children(self.conc_button_frame, 5, 5)
 
     def concordance_yview(self, *args):
@@ -185,11 +197,61 @@ class Corpus(tk.Frame):
         for key, m_text in self.conc_meta_text.items():
             m_text.yview(*args)
 
+    def unfilter_concordance(self):
+        self.concordance_filtered = []
+        self.clear_concordance_view()
+        self.display_concordance()
+
     def filter_concordance(self):
-        pass
+        if len(self.concordance) > 0:
+            self.concordance_filtered = []
+            filter_by = self.conc_filter_var.get()
+            what = self.conc_filter_what_combo.get()
+            case = bool(self.parent.settings_frame.concordance['Case'].get())
+            regex = bool(self.parent.settings_frame.concordance['IsRegEx'].get())
+            if case and not regex:
+                filter_by = filter_by.lower()
+            elif regex:
+                if case:
+                    flags = re.UNICODE
+                else:
+                    flags = re.UNICODE | re.IGNORECASE
+                s = r'{0}'.format(filter_by)
+                re_pattern = re.compile(s, flags=flags)
+            for l in self.concordance:
+                if what == "Line":
+                    line = "{} {} {}".format(l['Left'], l['Key'], l['Right'])
+                    if not regex:
+                        if not case:
+                            line = line.lower()
+                        if filter_by in line:
+                            self.concordance_filtered.append(l)
+                    else:
+                        if re_pattern.search(line):
+                            self.concordance_filtered.append(l)
+                else:
+                    if not regex:
+                        if not case:
+                            l[what] = l[what].lower()
+                        if filter_by in l[what]:
+                            self.concordance_filtered.append(l)
+                    else:
+                        if re_pattern.search(l[what]):
+                            self.concordance_filtered.append(l)
+            self.clear_concordance_view()
+            misc.enable_all_in_frame(self.conc_results_frame)
+            for i, l in enumerate(self.concordance_filtered):
+                self.add_concordance_line(l, i)
+            self.parent.root.update_idletasks()
+            misc.disable_all_in_frame(self.conc_results_frame)
+            self.conc_unfilter_button["state"] = "enabled"
 
     def sort_concordance(self):
-        pass
+        if len(self.concordance) > 0:
+            sort_by = [s.get() for s in self.conc_sort_var]
+            self.concordance = sorted(self.concordance, key=operator.itemgetter(*sort_by))
+            self.clear_concordance_view()
+            self.display_concordance()
 
     def export_concordance(self):
         pass
@@ -206,21 +268,18 @@ class Corpus(tk.Frame):
         try:
             if self.conc_job.is_alive():
                 try:
-                    if self.conc_pipe.poll():
-                        try:
-                            results = self.conc_pipe.recv()
-                        except OSError as e:
-                            print(e)
-                        else:
-                            for i, m in self.conc_meta_text.items():
-                                m["state"] = "normal"
-                            self.conc_index_text["state"] = "normal"
-                            self.conc_line_text["state"] = "normal"
-                            for r in results:
-                                self.add_concordance_line(r)
-                                self.concordance.append(r)
-                except OSError as e:
+                    results = self.q.get()
+                except (OSError, UnicodeDecodeError) as e:
                     print(e)
+                else:
+                    for i, m in self.conc_meta_text.items():
+                        m["state"] = "normal"
+                    self.conc_index_text["state"] = "normal"
+                    self.conc_line_text["state"] = "normal"
+                    for r in results:
+                        self.add_concordance_line(r)
+                        self.concordance.append(r)
+
                 self.parent.root.update_idletasks()
                 self.after_conc_job = self.parent.root.after(500, self.check_conc_proc_status)
             else:
@@ -238,6 +297,7 @@ class Corpus(tk.Frame):
                     self.finish_conc_search()
         except AttributeError as e:
             print(e)
+
 
     def add_metadata(self, l):
         for key, m_text in self.conc_meta_text.items():
@@ -282,7 +342,8 @@ class Corpus(tk.Frame):
                 m["state"] = "disabled"
             self.conc_index_text["state"] = "disabled"
             self.conc_line_text["state"] = "disabled"
-            self.improve_concordance_display()
+            if len(self.concordance) > 0:
+                self.improve_concordance_display()
 
     def finish_conc_search(self):
         self.concordance = sorted(self.conc_return_shared,
@@ -292,10 +353,18 @@ class Corpus(tk.Frame):
         self.display_concordance()
         self.conc_export_button["state"] = "normal"
         misc.disable_all_in_frame(self.conc_results_frame)
+        if len(self.concordance) > 0:
+            self.conc_export_button["state"] = "normal"
+            self.conc_sort_button["state"] = "normal"
+            self.conc_start_button["state"] = "normal"
+            self.conc_start_button["text"] = "Search all corpora"
+            self.conc_filter_button["state"] = "normal"
+            self.conc_filter_entry["state"] = "normal"
 
     def create_concordance(self):
         self.clear_concordance_view()
         self.concordance = []
+        self.concordance_filtered = []
         self.conc_export_button["state"] = "disabled"
         if self.conc_start_button["text"] == "Search this corpus":
             self.conc_cancelled = False
@@ -308,13 +377,14 @@ class Corpus(tk.Frame):
             options.update(misc.get_tk_vars(self.parent.settings_frame.concordance))
             options.update(misc.get_tk_vars(self.parent.settings_frame.xml))
             options["SearchTerm"] = self.parent.concordance_frame.search_var.get()
+            options["Corpus"] = self.name_var.get()
             self.conc_options = options
             self.parent.concordance_frame.add_search_term(options["SearchTerm"])
             manager = mp.Manager()
             self.conc_return_shared = manager.list()
-            self.conc_pipe, worker_pipe = mp.Pipe()
+            self.q = mp.Queue()
             self.conc_job = mp.Process(target=worker_search_files,
-                                       args=(self.files, options, self.conc_return_shared, worker_pipe,))
+                                       args=(self.files, options, self.conc_return_shared, self.q,))
             self.conc_job.start()
             self.parent.root.update_idletasks()
             self.parent.root.after(500, self.check_conc_proc_status)
